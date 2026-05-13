@@ -4,13 +4,14 @@ import OSLog
 
 private let log = Logger(subsystem: "se.linus.klang", category: "PresetStore")
 
+/// Owns the user's own preset library at `~/Library/Application Support/Klang/presets.json`.
+/// As of Klang 0.x the network catalog (`PresetCatalog`) owns AutoEq's built-ins,
+/// so this store only holds user-saved presets plus the bundled `Flat` baseline.
 @MainActor
 final class PresetStore: ObservableObject {
     @Published private(set) var presets: [EQPreset] = []
 
     private let fileURL: URL
-    private let builtInPresets: [EQPreset]
-    private let builtInIDs: Set<UUID>
     private var fileSource: DispatchSourceFileSystemObject?
     private var fileDescriptor: Int32 = -1
     private var reloadWorkItem: DispatchWorkItem?
@@ -23,57 +24,21 @@ final class PresetStore: ObservableObject {
         try? FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
         self.fileURL = support.appendingPathComponent("presets.json")
 
-        let bundled = Self.loadBundledPresets()
-        self.builtInPresets = bundled
-        self.builtInIDs = Set(bundled.map(\.id))
-
         seedIfNeeded()
         load()
-        migrateBuiltInsIfNeeded()
+        ensureFlatPresent()
         startWatching()
-    }
-
-    func isBuiltIn(_ preset: EQPreset) -> Bool {
-        builtInIDs.contains(preset.id)
-    }
-
-    func builtIn(matching preset: EQPreset) -> EQPreset? {
-        builtInPresets.first { $0.id == preset.id }
-    }
-
-    private static func loadBundledPresets() -> [EQPreset] {
-        if let url = Bundle.main.url(forResource: "presets", withExtension: "json"),
-           let data = try? Data(contentsOf: url),
-           let decoded = try? JSONDecoder().decode([EQPreset].self, from: data) {
-            return decoded
-        }
-        log.error("Bundled presets.json missing or unreadable — falling back to in-code defaults")
-        return [EQPreset.aryaStealthOratory1990, EQPreset.flat]
-    }
-
-    /// Users upgrading from a version that seeded built-ins with random UUIDs end up with
-    /// "orphan" copies that won't be recognized as built-in. Re-introduce the canonical
-    /// built-ins and remove any structurally-identical legacy seed entries.
-    private func migrateBuiltInsIfNeeded() {
-        let presentIDs = Set(presets.map(\.id))
-        let missing = builtInPresets.filter { !presentIDs.contains($0.id) }
-        guard !missing.isEmpty else { return }
-
-        var next = presets
-        // Drop legacy seed copies that exactly match a bundled built-in by content.
-        next.removeAll { existing in
-            builtInIDs.contains(existing.id) == false &&
-            builtInPresets.contains { $0.sameContent(as: existing) }
-        }
-        // Prepend the canonical built-ins in bundle order.
-        next.insert(contentsOf: missing, at: 0)
-        write(next)
-        log.info("Migrated presets.json — added \(missing.count) built-in(s)")
     }
 
     deinit {
         fileSource?.cancel()
         fileSource = nil
+    }
+
+    /// The only built-in left in this store is Flat — used by the editor to mark
+    /// the row as read-only. Catalog-sourced built-ins are detected via PresetCatalog.
+    func isBundledFlat(_ preset: EQPreset) -> Bool {
+        preset.id == EQPreset.flatID
     }
 
     // MARK: - Bundle seed
@@ -89,9 +54,17 @@ final class PresetStore: ObservableObject {
                 log.error("Failed to copy bundled presets: \(String(describing: error))")
             }
         }
-        // Fall back to writing the in-code defaults.
-        let defaults = [EQPreset.aryaStealthOratory1990, EQPreset.flat]
-        write(defaults)
+        write([EQPreset.flat])
+    }
+
+    /// Even if a user previously wiped their file or imported a stripped copy, Flat
+    /// must always be available as a fall-back. If it's missing, splice it back in
+    /// at the top — but only when we'd otherwise have nothing offline-safe.
+    private func ensureFlatPresent() {
+        guard !presets.contains(where: { $0.id == EQPreset.flatID }) else { return }
+        var next = presets
+        next.insert(EQPreset.flat, at: 0)
+        write(next)
     }
 
     // MARK: - Load / write
@@ -103,8 +76,8 @@ final class PresetStore: ObservableObject {
             presets = decoded
             log.info("Loaded \(decoded.count) presets")
         } catch {
-            log.error("Failed to load presets.json: \(String(describing: error)). Falling back to defaults.")
-            presets = [EQPreset.aryaStealthOratory1990, EQPreset.flat]
+            log.error("Failed to load presets.json: \(String(describing: error)). Falling back to Flat.")
+            presets = [EQPreset.flat]
         }
     }
 
@@ -159,6 +132,42 @@ final class PresetStore: ObservableObject {
         write(presets.filter { $0.id != id })
     }
 
+    // MARK: - Legacy migration
+
+    private static let migrationDefaultsKey = "klang.presets.migratedBuiltIns_v1"
+
+    /// One-time migration: prior Klang versions seeded AutoEq presets directly into
+    /// the user's `presets.json` with stable UUIDs. The new model moves them into
+    /// `PresetCatalog`. For each legacy entry we find, we:
+    ///   1. Tell the catalog to mark its (newly deterministic) ID enabled.
+    ///   2. Seed the catalog's cache with the user's existing copy so the picker
+    ///      shows the right curve before the network fetch lands.
+    ///   3. Remove the legacy entry from `presets.json`.
+    func migrateLegacyBuiltInsIfNeeded(into catalog: PresetCatalog) {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: Self.migrationDefaultsKey) else { return }
+
+        var remaining = presets
+        var didChange = false
+        for legacy in LegacyMigrationEntry.all {
+            if let idx = remaining.firstIndex(where: { $0.id == legacy.legacyID }) {
+                let existing = remaining[idx]
+                let catalogID = CatalogEntry.deterministicID(slug: legacy.slug)
+                var seeded = existing
+                seeded.id = catalogID
+                catalog.seedHydrated(seeded, slug: legacy.slug)
+                catalog.adoptLegacyBuiltInIDs([catalogID])
+                remaining.remove(at: idx)
+                didChange = true
+                log.info("Migrated legacy built-in \(legacy.legacyID) → catalog \(catalogID) (\(legacy.slug))")
+            }
+        }
+        if didChange {
+            write(remaining)
+        }
+        defaults.set(true, forKey: Self.migrationDefaultsKey)
+    }
+
     // MARK: - File watching
 
     private func startWatching() {
@@ -201,7 +210,6 @@ final class PresetStore: ObservableObject {
 
     private func restartWatching() {
         stopWatching()
-        // Give the new file a moment to land.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
             self?.startWatching()
         }

@@ -7,6 +7,7 @@ private let bootLog = Logger(subsystem: "se.linus.klang", category: "Boot")
 struct KlangApp: App {
     @StateObject private var deviceManager = DeviceManager()
     @StateObject private var presetStore = PresetStore()
+    @StateObject private var presetCatalog = PresetCatalog()
     @StateObject private var engine = EQEngine()
 
     @Environment(\.openWindow) private var openWindow
@@ -16,7 +17,8 @@ struct KlangApp: App {
             MenuBarView(
                 engine: engine,
                 deviceManager: deviceManager,
-                presetStore: presetStore
+                presetStore: presetStore,
+                presetCatalog: presetCatalog
             )
         } label: {
             Image(systemName: engine.isRunning ? "waveform.circle.fill" : "waveform.circle")
@@ -26,7 +28,8 @@ struct KlangApp: App {
         Window("Klang EQ Editor", id: "editor") {
             EQEditorView(
                 engine: engine,
-                presetStore: presetStore
+                presetStore: presetStore,
+                presetCatalog: presetCatalog
             )
             .frame(minWidth: 720, minHeight: 460)
         }
@@ -36,5 +39,8 @@ struct KlangApp: App {
 
     init() {
         bootLog.info("[klang] Booted: Process Tap + vDSP biquad EQ + HAL output (no AVAudioEngine)")
+        // Migration is synchronous and one-shot: move any in-file built-ins into the
+        // network catalog. The catalog kicks off its own async index refresh in its init.
+        presetStore.migrateLegacyBuiltInsIfNeeded(into: presetCatalog)
     }
 }

@@ -33,30 +33,10 @@ struct EQPreset: Codable, Hashable, Identifiable {
 }
 
 extension EQPreset {
-    // Stable IDs — mirror Klang/Resources/presets.json so PresetStore can
-    // recognize these as built-in even when seeded from the in-code fallback.
-    static let aryaStealthOratory1990ID = UUID(uuidString: "B2626DF3-DEDE-4EA6-A1C5-A34C0B320552")!
+    /// The neutral "no correction" preset. Always available, even offline. Its
+    /// canonical UUID is mirrored in `Klang/Resources/presets.json` so PresetStore
+    /// can identify it as the bundled baseline.
     static let flatID = UUID(uuidString: "C1996F66-CC88-4D92-8511-7407391A0BE2")!
-
-    static let aryaStealthOratory1990 = EQPreset(
-        id: aryaStealthOratory1990ID,
-        name: "HiFiMan Arya Stealth · Oratory1990",
-        headphone: "HiFiMan Arya Stealth",
-        source: "Oratory1990",
-        preamp: -5.2,
-        bands: [
-            EQBand(type: .lowShelf,  frequency: 105,   gain:  5.9, q: 0.70),
-            EQBand(type: .peak,      frequency: 99,    gain: -2.5, q: 0.31),
-            EQBand(type: .peak,      frequency: 1825,  gain:  5.1, q: 1.78),
-            EQBand(type: .peak,      frequency: 3009,  gain: -2.8, q: 3.29),
-            EQBand(type: .peak,      frequency: 4828,  gain: -3.9, q: 4.18),
-            EQBand(type: .peak,      frequency: 150,   gain:  0.2, q: 1.75),
-            EQBand(type: .peak,      frequency: 652,   gain:  0.8, q: 4.18),
-            EQBand(type: .peak,      frequency: 969,   gain: -1.3, q: 3.17),
-            EQBand(type: .peak,      frequency: 1373,  gain:  0.9, q: 4.21),
-            EQBand(type: .highShelf, frequency: 10000, gain: -3.1, q: 0.70)
-        ]
-    )
 
     static let flat = EQPreset(
         id: flatID,
@@ -86,4 +66,20 @@ extension EQPreset {
         }
         return true
     }
+}
+
+/// Pair (old UUID, AutoEq slug) used to upgrade users from the in-file built-in
+/// model to the network catalog without losing their selection.
+struct LegacyMigrationEntry: Hashable {
+    let legacyID: UUID
+    let slug: String
+
+    static let aryaStealthOratory1990 = LegacyMigrationEntry(
+        legacyID: UUID(uuidString: "B2626DF3-DEDE-4EA6-A1C5-A34C0B320552")!,
+        slug: "oratory1990/over-ear/HIFIMAN Arya Stealth Magnet Version"
+    )
+
+    /// All UUIDs that previous Klang versions seeded into `presets.json` and that
+    /// should now live in the network catalog instead.
+    static let all: [LegacyMigrationEntry] = [aryaStealthOratory1990]
 }

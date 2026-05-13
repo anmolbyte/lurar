@@ -8,11 +8,18 @@ struct MenuBarView: View {
     @ObservedObject var engine: EQEngine
     @ObservedObject var deviceManager: DeviceManager
     @ObservedObject var presetStore: PresetStore
+    @ObservedObject var presetCatalog: PresetCatalog
 
     @Environment(\.openWindow) private var openWindow
 
     @State private var selectedPresetID: UUID?
     @State private var launchAtLogin: Bool = SMAppService.mainApp.status == .enabled
+
+    /// Catalog-enabled built-ins first, then the user's own presets. The catalog
+    /// section is empty until the index loads and entries hydrate.
+    private var visiblePresets: [EQPreset] {
+        presetCatalog.enabledPresets + presetStore.presets
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -95,49 +102,83 @@ struct MenuBarView: View {
         .toggleStyle(.switch)
     }
 
+    /// Label column width shared by Preset/Output/Status rows so the right-hand
+    /// controls line up cleanly. Picked to fit "Preset" / "Output" / "Status" at
+    /// the body font without truncation.
+    private let labelColumnWidth: CGFloat = 56
+
+    /// Width of the dropdown chrome. `Picker` (NSPopUpButton) ignores `.frame`,
+    /// so we use `Menu` instead and constrain its label — Menu *does* honor it.
+    private let pickerWidth: CGFloat = 232
+
     private var presetPicker: some View {
-        HStack {
+        HStack(spacing: 8) {
             Text("Preset")
-            Spacer()
-            Picker("", selection: $selectedPresetID) {
-                ForEach(presetStore.presets) { preset in
-                    Text(preset.name).tag(Optional(preset.id))
+                .frame(width: labelColumnWidth, alignment: .leading)
+            FixedWidthPopUp(
+                width: pickerWidth,
+                selection: Binding(
+                    get: { selectedPresetID?.uuidString ?? "" },
+                    set: { uuidString in
+                        selectedPresetID = UUID(uuidString: uuidString)
+                    }
+                ),
+                items: visiblePresets.map { preset in
+                    .init(id: preset.id.uuidString, title: presetMenuLabel(for: preset))
                 }
-            }
-            .labelsHidden()
-            .frame(maxWidth: 200)
+            )
+            .disabled(visiblePresets.isEmpty)
         }
     }
 
+    private func presetMenuLabel(for preset: EQPreset) -> String {
+        let suffix = presetSourceSuffix(for: preset)
+        guard !suffix.isEmpty else { return preset.name }
+        // Don't double-up if the preset name already ends with this source (some
+        // legacy bundled names already had the source baked in).
+        if preset.name.lowercased().hasSuffix(suffix.lowercased()) {
+            return preset.name
+        }
+        return "\(preset.name) · \(suffix)"
+    }
+
+    /// Pick a short disambiguating tag from `source`. Klang's own user presets get
+    /// no suffix; catalog entries surface their measurer/rig.
+    private func presetSourceSuffix(for preset: EQPreset) -> String {
+        let trimmed = preset.source.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty || trimmed.caseInsensitiveCompare("Klang") == .orderedSame {
+            return ""
+        }
+        return trimmed
+    }
+
     private var outputPicker: some View {
-        HStack {
+        HStack(spacing: 8) {
             Text("Output")
-            Spacer()
-            Picker("", selection: Binding(
-                get: { deviceManager.selectedOutput?.uid ?? "" },
-                set: { uid in
-                    deviceManager.selectedOutput = deviceManager.outputDevices.first { $0.uid == uid }
-                }
-            )) {
-                ForEach(deviceManager.outputDevices) { dev in
-                    Text(dev.name).tag(dev.uid)
-                }
-            }
-            .labelsHidden()
-            .frame(maxWidth: 200)
+                .frame(width: labelColumnWidth, alignment: .leading)
+            FixedWidthPopUp(
+                width: pickerWidth,
+                selection: Binding(
+                    get: { deviceManager.selectedOutput?.uid ?? "" },
+                    set: { uid in
+                        deviceManager.selectedOutput = deviceManager.outputDevices.first { $0.uid == uid }
+                    }
+                ),
+                items: deviceManager.outputDevices.map { .init(id: $0.uid, title: $0.name) }
+            )
+            .disabled(deviceManager.outputDevices.isEmpty)
         }
     }
 
     private var statusRow: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .top) {
-                Text("Status")
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text(engine.statusMessage)
-                    .multilineTextAlignment(.trailing)
-                    .lineLimit(3)
-            }
+        HStack(alignment: .top) {
+            Text("Status")
+                .foregroundStyle(.secondary)
+                .frame(width: labelColumnWidth, alignment: .leading)
+            Text(engine.statusMessage)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .multilineTextAlignment(.trailing)
+                .lineLimit(3)
         }
         .font(.callout)
     }
@@ -146,7 +187,7 @@ struct MenuBarView: View {
 
     private func wireUp() {
         if selectedPresetID == nil {
-            selectedPresetID = presetStore.presets.first?.id
+            selectedPresetID = visiblePresets.first?.id
         }
         deviceManager.onTopologyChange = {
             // If currently running, try to restart with the current selection.
@@ -157,7 +198,7 @@ struct MenuBarView: View {
 
     private func applySelectedPreset() {
         guard let id = selectedPresetID,
-              let preset = presetStore.presets.first(where: { $0.id == id }) else { return }
+              let preset = visiblePresets.first(where: { $0.id == id }) else { return }
         if engine.currentPreset?.id == preset.id { return }
         engine.apply(preset: preset)
     }
@@ -190,6 +231,69 @@ struct MenuBarView: View {
         } catch {
             log.error("Launch-at-login toggle failed: \(String(describing: error))")
             launchAtLogin = SMAppService.mainApp.status == .enabled
+        }
+    }
+}
+
+// MARK: - Fixed-width popup
+
+/// Wraps `NSPopUpButton` so we can hand it an explicit width that it actually
+/// respects. SwiftUI's `Picker` and `Menu` both bridge to AppKit chrome that
+/// content-hugs and ignores `.frame(width:)`, which is why we drop to AppKit.
+private struct FixedWidthPopUp: NSViewRepresentable {
+    struct Item: Hashable {
+        let id: String
+        let title: String
+    }
+
+    let width: CGFloat
+    @Binding var selection: String
+    let items: [Item]
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    func makeNSView(context: Context) -> NSPopUpButton {
+        let button = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: width, height: 24), pullsDown: false)
+        button.controlSize = .regular
+        button.target = context.coordinator
+        button.action = #selector(Coordinator.selectionChanged(_:))
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return button
+    }
+
+    func updateNSView(_ button: NSPopUpButton, context: Context) {
+        context.coordinator.parent = self
+
+        // Rebuild items only if the set changed — preserves selection animation.
+        let titles = items.map(\.title)
+        let existing = button.itemArray.map(\.title)
+        if titles != existing {
+            button.removeAllItems()
+            for item in items {
+                button.addItem(withTitle: item.title)
+                button.lastItem?.representedObject = item.id
+            }
+        }
+        if let index = items.firstIndex(where: { $0.id == selection }) {
+            if button.indexOfSelectedItem != index {
+                button.selectItem(at: index)
+            }
+        }
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSPopUpButton, context: Context) -> CGSize? {
+        CGSize(width: width, height: nsView.intrinsicContentSize.height)
+    }
+
+    final class Coordinator: NSObject {
+        var parent: FixedWidthPopUp
+        init(_ parent: FixedWidthPopUp) { self.parent = parent }
+
+        @objc func selectionChanged(_ sender: NSPopUpButton) {
+            guard let id = sender.selectedItem?.representedObject as? String else { return }
+            parent.selection = id
         }
     }
 }

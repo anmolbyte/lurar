@@ -4,16 +4,22 @@ import SwiftUI
 struct EQEditorView: View {
     @ObservedObject var engine: EQEngine
     @ObservedObject var presetStore: PresetStore
+    @ObservedObject var presetCatalog: PresetCatalog
 
     // Working copy, edited live and pushed to the engine on every change.
     @State private var draft: EQPreset = .flat
     @State private var newPresetName: String = ""
     @State private var showSaveSheet = false
     @State private var showDeleteConfirm = false
+    @State private var showLibrary = false
     @StateObject private var closeCoordinator = EditorCloseCoordinator()
     @State private var hostWindow: NSWindow?
 
-    private var isBuiltIn: Bool { presetStore.isBuiltIn(draft) }
+    /// Both bundled Flat and any catalog-sourced preset are read-only — users must
+    /// "Save As New…" to keep edits.
+    private var isBuiltIn: Bool {
+        presetStore.isBundledFlat(draft) || presetCatalog.isBuiltIn(draft.id)
+    }
 
     private var savedVersion: EQPreset? {
         presetStore.presets.first(where: { $0.id == draft.id })
@@ -48,6 +54,14 @@ struct EQEditorView: View {
             .frame(minWidth: 320)
         }
         .toolbar {
+            ToolbarItemGroup(placement: .navigation) {
+                Button {
+                    showLibrary = true
+                } label: {
+                    Label("Browse Library…", systemImage: "books.vertical")
+                }
+                .help("Pick which AutoEq headphone presets to show in the menu")
+            }
             ToolbarItemGroup(placement: .destructiveAction) {
                 if !isBuiltIn && savedVersion != nil {
                     Button(role: .destructive) {
@@ -66,6 +80,9 @@ struct EQEditorView: View {
         }
         .sheet(isPresented: $showSaveSheet) {
             saveSheet
+        }
+        .sheet(isPresented: $showLibrary) {
+            PresetLibraryView(catalog: presetCatalog)
         }
         .alert("Delete \u{201C}\(draft.name)\u{201D}?", isPresented: $showDeleteConfirm) {
             Button("Delete", role: .destructive) { deleteCurrent() }

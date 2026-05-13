@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct EQEditorView: View {
@@ -9,6 +10,8 @@ struct EQEditorView: View {
     @State private var newPresetName: String = ""
     @State private var showSaveSheet = false
     @State private var showDeleteConfirm = false
+    @StateObject private var closeCoordinator = EditorCloseCoordinator()
+    @State private var hostWindow: NSWindow?
 
     private var isBuiltIn: Bool { presetStore.isBuiltIn(draft) }
 
@@ -70,6 +73,28 @@ struct EQEditorView: View {
         } message: {
             Text("This preset will be permanently removed.")
         }
+        .alert(
+            "Save changes to \u{201C}\(draft.name)\u{201D}?",
+            isPresented: $closeCoordinator.pendingClose
+        ) {
+            Button("Save") {
+                presetStore.update(draft)
+                let window = hostWindow
+                DispatchQueue.main.async { window?.close() }
+            }
+            Button("Revert", role: .destructive) {
+                if let saved = savedVersion {
+                    engine.apply(preset: saved)
+                    draft = saved
+                }
+                let window = hostWindow
+                DispatchQueue.main.async { window?.close() }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Your edits haven't been saved. Save them, revert to the on-disk version, or cancel and keep editing.")
+        }
+        .background(WindowAccessor(window: $hostWindow))
         .task {
             if let current = engine.currentPreset { draft = current }
             else if let first = presetStore.presets.first { draft = first }
@@ -77,6 +102,19 @@ struct EQEditorView: View {
         .onChange(of: engine.currentPreset) { _, new in
             // Engine changed preset externally (menu bar). Mirror into the editor.
             if let new, new.id != draft.id { draft = new }
+        }
+        .onChange(of: hostWindow) { _, win in
+            win?.delegate = closeCoordinator
+        }
+        .onAppear {
+            closeCoordinator.isDirty = isDirty
+            closeCoordinator.isBuiltIn = isBuiltIn
+        }
+        .onChange(of: isDirty) { _, new in
+            closeCoordinator.isDirty = new
+        }
+        .onChange(of: isBuiltIn) { _, new in
+            closeCoordinator.isBuiltIn = new
         }
     }
 
@@ -119,11 +157,26 @@ struct EQEditorView: View {
 
     private func deleteCurrent() {
         let deletedID = draft.id
+        let deletedIndex = presetStore.presets.firstIndex(where: { $0.id == deletedID })
         presetStore.delete(id: deletedID)
-        if let next = presetStore.presets.first {
+
+        // Pick a neighbor: same index after removal (was the one below), else
+        // the previous one, else the first remaining preset.
+        let neighbor: EQPreset? = {
+            if let idx = deletedIndex {
+                if idx < presetStore.presets.count { return presetStore.presets[idx] }
+                if idx > 0 { return presetStore.presets[idx - 1] }
+            }
+            return presetStore.presets.first
+        }()
+
+        if let next = neighbor {
             draft = next
             engine.apply(preset: next)
         }
+
+        let window = hostWindow
+        DispatchQueue.main.async { window?.close() }
     }
 
     private var preampRow: some View {
@@ -143,6 +196,7 @@ struct EQEditorView: View {
                 ),
                 in: -12...0
             )
+            .disabled(isBuiltIn)
         }
     }
 
@@ -167,6 +221,7 @@ struct EQEditorView: View {
                     }
                     .labelsHidden()
                     .frame(width: 130)
+                    .disabled(isBuiltIn)
                 }
 
                 // Frequency (log scale)
@@ -184,6 +239,7 @@ struct EQEditorView: View {
                         ),
                         in: logFreq(20)...logFreq(20_000)
                     )
+                    .disabled(isBuiltIn)
                 }
 
                 // Gain
@@ -199,6 +255,7 @@ struct EQEditorView: View {
                         ),
                         in: -12...12
                     )
+                    .disabled(isBuiltIn)
                 }
 
                 // Q
@@ -214,6 +271,7 @@ struct EQEditorView: View {
                         ),
                         in: 0.1...10
                     )
+                    .disabled(isBuiltIn)
                 }
             }
             .padding(.vertical, 4)
@@ -247,6 +305,7 @@ struct EQEditorView: View {
                     copy.name = newPresetName.isEmpty ? draft.name + " (new)" : newPresetName
                     presetStore.add(copy)
                     draft = copy
+                    engine.apply(preset: copy)
                     showSaveSheet = false
                     newPresetName = ""
                 }
@@ -260,4 +319,36 @@ struct EQEditorView: View {
 
     private func logFreq(_ hz: Double) -> Double { log10(max(hz, 1)) }
     private func expFreq(_ log: Double) -> Double { pow(10, log) }
+}
+
+// MARK: - Window close interception
+
+private struct WindowAccessor: NSViewRepresentable {
+    @Binding var window: NSWindow?
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            if window !== view.window { window = view.window }
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            if window !== nsView.window { window = nsView.window }
+        }
+    }
+}
+
+final class EditorCloseCoordinator: NSObject, ObservableObject, NSWindowDelegate {
+    @Published var pendingClose: Bool = false
+    var isDirty: Bool = false
+    var isBuiltIn: Bool = false
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        if !isDirty || isBuiltIn { return true }
+        pendingClose = true
+        return false
+    }
 }

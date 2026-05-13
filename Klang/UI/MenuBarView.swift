@@ -57,6 +57,13 @@ struct MenuBarView: View {
             applySelectedPreset()
         }
         .onChange(of: selectedPresetID) { _, _ in applySelectedPreset() }
+        .onChange(of: engine.currentPreset) { _, new in
+            // Engine changed preset externally (e.g. editor deleted the current
+            // preset and moved to a neighbor). Keep the dropdown in sync.
+            if let id = new?.id, id != selectedPresetID {
+                selectedPresetID = id
+            }
+        }
         .onChange(of: deviceManager.selectedOutput) { _, _ in restartIfRunning() }
     }
 
@@ -151,6 +158,7 @@ struct MenuBarView: View {
     private func applySelectedPreset() {
         guard let id = selectedPresetID,
               let preset = presetStore.presets.first(where: { $0.id == id }) else { return }
+        if engine.currentPreset?.id == preset.id { return }
         engine.apply(preset: preset)
     }
 

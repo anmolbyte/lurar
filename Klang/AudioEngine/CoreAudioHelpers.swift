@@ -293,6 +293,26 @@ enum AUHAL {
         }
     }
 
+    /// Raise an AU's `MaximumFramesPerSlice` so it can absorb bursty large render calls. We've
+    /// seen the input AU push ~1100-frame bursts at high sample rates during transitions, which
+    /// trips `-10874 kAudioUnitErr_TooManyFramesToProcess` on downstream nodes still configured
+    /// for the 512-frame default.
+    static func setMaxFramesPerSlice(_ frames: UInt32, on au: AudioUnit?) {
+        guard let au else { return }
+        var f = frames
+        let status = AudioUnitSetProperty(
+            au,
+            kAudioUnitProperty_MaximumFramesPerSlice,
+            kAudioUnitScope_Global,
+            0,
+            &f,
+            UInt32(MemoryLayout<UInt32>.size)
+        )
+        if status != noErr {
+            log.warning("setMaxFramesPerSlice(\(frames)) returned \(status); continuing.")
+        }
+    }
+
     /// Bind the engine's input node to the given device. Also enables IO on bus 1 (input) and
     /// disables IO on bus 0 (output) of the underlying AUHAL, which is required when the input
     /// node is being used as a non-default input source.
@@ -411,6 +431,59 @@ final class DeviceChangeListener {
         guard let block else { return }
         AudioObjectRemovePropertyListenerBlock(
             AudioObjectID(kAudioObjectSystemObject),
+            &address,
+            DispatchQueue.main,
+            block
+        )
+    }
+}
+
+// MARK: - Per-device property listener
+
+/// Listens for a single property change on a specific Core Audio device and calls the handler
+/// on the main queue. Used to detect runtime sample-rate / format changes on the active input
+/// or output so the engine can re-reconcile.
+final class AudioDevicePropertyListener {
+    typealias Handler = () -> Void
+
+    private let deviceID: AudioDeviceID
+    private let handler: Handler
+    private var address: AudioObjectPropertyAddress
+    private var block: AudioObjectPropertyListenerBlock?
+
+    init(
+        deviceID: AudioDeviceID,
+        selector: AudioObjectPropertySelector,
+        scope: AudioObjectPropertyScope = kAudioObjectPropertyScopeGlobal,
+        element: AudioObjectPropertyElement = kAudioObjectPropertyElementMain,
+        handler: @escaping Handler
+    ) {
+        self.deviceID = deviceID
+        self.handler = handler
+        self.address = AudioObjectPropertyAddress(
+            mSelector: selector,
+            mScope: scope,
+            mElement: element
+        )
+        let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+            self?.handler()
+        }
+        self.block = block
+        let status = AudioObjectAddPropertyListenerBlock(
+            deviceID,
+            &address,
+            DispatchQueue.main,
+            block
+        )
+        if status != noErr {
+            log.error("Failed to register device property listener (device=\(deviceID), selector=\(fourCharCode(OSStatus(bitPattern: selector)))): \(status)")
+        }
+    }
+
+    deinit {
+        guard let block else { return }
+        AudioObjectRemovePropertyListenerBlock(
+            deviceID,
             &address,
             DispatchQueue.main,
             block

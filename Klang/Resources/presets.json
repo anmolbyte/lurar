@@ -1,24 +1,5 @@
 [
   {
-    "id": "B2626DF3-DEDE-4EA6-A1C5-A34C0B320552",
-    "name": "HiFiMan Arya Stealth · Oratory1990",
-    "headphone": "HiFiMan Arya Stealth",
-    "source": "Oratory1990",
-    "preamp": -5.2,
-    "bands": [
-      { "type": "lowShelf",  "frequency": 105,   "gain":  5.9, "q": 0.70 },
-      { "type": "peak",      "frequency": 99,    "gain": -2.5, "q": 0.31 },
-      { "type": "peak",      "frequency": 1825,  "gain":  5.1, "q": 1.78 },
-      { "type": "peak",      "frequency": 3009,  "gain": -2.8, "q": 3.29 },
-      { "type": "peak",      "frequency": 4828,  "gain": -3.9, "q": 4.18 },
-      { "type": "peak",      "frequency": 150,   "gain":  0.2, "q": 1.75 },
-      { "type": "peak",      "frequency": 652,   "gain":  0.8, "q": 4.18 },
-      { "type": "peak",      "frequency": 969,   "gain": -1.3, "q": 3.17 },
-      { "type": "peak",      "frequency": 1373,  "gain":  0.9, "q": 4.21 },
-      { "type": "highShelf", "frequency": 10000, "gain": -3.1, "q": 0.70 }
-    ]
-  },
-  {
     "id": "C1996F66-CC88-4D92-8511-7407391A0BE2",
     "name": "Flat",
     "headphone": "Any",

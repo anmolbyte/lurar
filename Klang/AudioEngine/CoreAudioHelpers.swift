@@ -53,10 +53,6 @@ struct AudioDevice: Identifiable, Hashable {
     let hasInput: Bool
     let hasOutput: Bool
 
-    var isBlackHole: Bool {
-        name.localizedCaseInsensitiveContains("BlackHole")
-    }
-
     var isHiFiMan: Bool {
         name.localizedCaseInsensitiveContains("HIFIMAN")
             || manufacturer.localizedCaseInsensitiveContains("HIFIMAN")
@@ -78,11 +74,6 @@ enum CoreAudioDevices {
 
     static func defaultOutput() -> AudioDevice? {
         guard let id = try? defaultDeviceID(scope: kAudioHardwarePropertyDefaultOutputDevice) else { return nil }
-        return try? device(for: id)
-    }
-
-    static func defaultInput() -> AudioDevice? {
-        guard let id = try? defaultDeviceID(scope: kAudioHardwarePropertyDefaultInputDevice) else { return nil }
         return try? device(for: id)
     }
 

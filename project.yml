@@ -2,7 +2,7 @@ name: Klang
 options:
   bundleIdPrefix: se.linus
   deploymentTarget:
-    macOS: "14.0"
+    macOS: "14.2"
   createIntermediateGroups: true
   generateEmptyDirectories: true
 settings:
@@ -18,7 +18,7 @@ targets:
   Klang:
     type: application
     platform: macOS
-    deploymentTarget: "14.0"
+    deploymentTarget: "14.2"
     sources:
       - path: Klang
         excludes:
@@ -34,13 +34,14 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundlePackageType: APPL
         LSUIElement: true
-        LSMinimumSystemVersion: "14.0"
-        NSMicrophoneUsageDescription: "Klang needs audio input access to capture system audio from BlackHole and apply EQ before routing to your DAC."
+        LSMinimumSystemVersion: "14.2"
+        NSAudioCaptureUsageDescription: "Klang captures system audio via a Core Audio process tap so it can apply EQ before routing audio to your output device."
         NSHighResolutionCapable: true
     entitlements:
       path: Klang/Klang.entitlements
       properties:
         com.apple.security.app-sandbox: false
+        com.apple.security.device.audio-input: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: se.linus.klang

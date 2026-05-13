@@ -21,12 +21,12 @@
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSMinimumSystemVersion</key>
-	<string>14.0</string>
+	<string>14.2</string>
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSHighResolutionCapable</key>
 	<true/>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>Klang needs audio input access to capture system audio from BlackHole and apply EQ before routing to your DAC.</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>Klang captures system audio via a Core Audio process tap so it can apply EQ before routing audio to your output device.</string>
 </dict>
 </plist>

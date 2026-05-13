@@ -1,4 +1,7 @@
 import SwiftUI
+import OSLog
+
+private let bootLog = Logger(subsystem: "se.linus.klang", category: "Boot")
 
 @main
 struct KlangApp: App {
@@ -32,6 +35,7 @@ struct KlangApp: App {
     }
 
     init() {
+        bootLog.info("[klang-fix] Booted build with restart-skip + maxFramesPerSlice fixes")
         // Wire up dependencies after init via .task in the views or directly here.
         // (The actual wiring happens lazily in MenuBarView / EQEditorView once the
         // StateObjects are alive, to avoid touching @StateObject before body runs.)

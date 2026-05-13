@@ -22,7 +22,6 @@ struct MenuBarView: View {
 
             engineRow
             presetPicker
-            inputPicker
             outputPicker
             statusRow
 
@@ -59,7 +58,6 @@ struct MenuBarView: View {
         }
         .onChange(of: selectedPresetID) { _, _ in applySelectedPreset() }
         .onChange(of: deviceManager.selectedOutput) { _, _ in restartIfRunning() }
-        .onChange(of: deviceManager.selectedInput) { _, _ in restartIfRunning() }
     }
 
     // MARK: - Sections
@@ -104,29 +102,6 @@ struct MenuBarView: View {
         }
     }
 
-    private var inputPicker: some View {
-        HStack {
-            Text("Input")
-            Spacer()
-            Picker("", selection: Binding(
-                get: { deviceManager.selectedInput?.uid ?? "" },
-                set: { uid in
-                    let dev = deviceManager.inputDevices.first { $0.uid == uid }
-                    deviceManager.userSelectInput(dev)
-                }
-            )) {
-                if deviceManager.inputDevices.isEmpty {
-                    Text("No inputs").tag("")
-                }
-                ForEach(deviceManager.inputDevices) { dev in
-                    Text(dev.name).tag(dev.uid)
-                }
-            }
-            .labelsHidden()
-            .frame(maxWidth: 200)
-        }
-    }
-
     private var outputPicker: some View {
         HStack {
             Text("Output")
@@ -148,13 +123,6 @@ struct MenuBarView: View {
 
     private var statusRow: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text("Input")
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text(deviceManager.selectedInput?.name ?? "—")
-                    .foregroundStyle(deviceManager.selectedInput?.isBlackHole == true ? Color.primary : Color.orange)
-            }
             HStack(alignment: .top) {
                 Text("Status")
                     .foregroundStyle(.secondary)
@@ -187,25 +155,20 @@ struct MenuBarView: View {
     }
 
     private func startEngine() {
-        guard let input = deviceManager.selectedInput else {
-            engine.reportStartFailure("Pick an input (BlackHole 2ch) first")
-            return
-        }
         guard let output = deviceManager.selectedOutput else {
             engine.reportStartFailure("Pick an output device first")
             return
         }
-        engine.start(input: input, output: output)
+        engine.start(output: output)
     }
 
     private func restartIfRunning() {
         guard engine.isRunning else { return }
-        guard let input = deviceManager.selectedInput,
-              let output = deviceManager.selectedOutput else {
+        guard let output = deviceManager.selectedOutput else {
             engine.stop()
             return
         }
-        engine.start(input: input, output: output)
+        engine.start(output: output)
     }
 
     private func toggleLaunchAtLogin(_ on: Bool) {

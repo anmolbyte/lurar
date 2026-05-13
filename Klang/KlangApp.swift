@@ -35,6 +35,6 @@ struct KlangApp: App {
     }
 
     init() {
-        bootLog.info("[klang] Booted: HAL input + vDSP biquad EQ + HAL output (no AVAudioEngine)")
+        bootLog.info("[klang] Booted: Process Tap + vDSP biquad EQ + HAL output (no AVAudioEngine)")
     }
 }

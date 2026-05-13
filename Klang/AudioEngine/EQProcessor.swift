@@ -11,7 +11,7 @@ import os
 /// thread keeps using the previous coefficients for one callback — worst case ~10 ms
 /// of latency on a slider drag, which is below the threshold of perception.
 final class EQProcessor {
-    static let sectionCount = 4
+    static let sectionCount = 10
 
     private let cascadeL: BiquadCascade
     private let cascadeR: BiquadCascade

@@ -15,7 +15,7 @@ final class EQEngine: ObservableObject {
 
     // Signal flow:
     //   ProcessTap (system audio, excl. own process) → aggregate device
-    //     → input AU → EQProcessor (4-band vDSP biquad + preamp) → ring buffer
+    //     → input AU → EQProcessor (10-band vDSP biquad + preamp) → ring buffer
     //                                                                ↓
     //                                                             HALOutput (DAC)
     //

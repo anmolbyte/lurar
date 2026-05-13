@@ -6,7 +6,7 @@ struct EQPreset: Codable, Hashable, Identifiable {
     var headphone: String
     var source: String
     var preamp: Float          // dB
-    var bands: [EQBand]        // expected length: 4
+    var bands: [EQBand]        // expected length: 10 (Klang's section count); shorter presets are padded with identity biquads
 
     enum CodingKeys: String, CodingKey {
         case id, name, headphone, source, preamp, bands
@@ -37,12 +37,18 @@ extension EQPreset {
         name: "HiFiMan Arya Stealth · Oratory1990",
         headphone: "HiFiMan Arya Stealth",
         source: "Oratory1990",
-        preamp: -6.0,
+        preamp: -5.2,
         bands: [
-            EQBand(type: .lowShelf,  frequency: 105,   gain:  5.5, q: 0.71),
-            EQBand(type: .peak,      frequency: 2800,  gain: -2.5, q: 3.0),
-            EQBand(type: .peak,      frequency: 5800,  gain: -3.0, q: 4.0),
-            EQBand(type: .highShelf, frequency: 10000, gain: -2.0, q: 0.71)
+            EQBand(type: .lowShelf,  frequency: 105,   gain:  5.9, q: 0.70),
+            EQBand(type: .peak,      frequency: 99,    gain: -2.5, q: 0.31),
+            EQBand(type: .peak,      frequency: 1825,  gain:  5.1, q: 1.78),
+            EQBand(type: .peak,      frequency: 3009,  gain: -2.8, q: 3.29),
+            EQBand(type: .peak,      frequency: 4828,  gain: -3.9, q: 4.18),
+            EQBand(type: .peak,      frequency: 150,   gain:  0.2, q: 1.75),
+            EQBand(type: .peak,      frequency: 652,   gain:  0.8, q: 4.18),
+            EQBand(type: .peak,      frequency: 969,   gain: -1.3, q: 3.17),
+            EQBand(type: .peak,      frequency: 1373,  gain:  0.9, q: 4.21),
+            EQBand(type: .highShelf, frequency: 10000, gain: -3.1, q: 0.70)
         ]
     )
 

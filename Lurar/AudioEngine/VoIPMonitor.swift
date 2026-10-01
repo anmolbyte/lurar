@@ -1,5 +1,6 @@
 import CoreAudio
 import Foundation
+import AppKit
 import Combine
 import OSLog
 
@@ -65,12 +66,19 @@ final class VoIPMonitor: ObservableObject {
             }
         }
         
+        let isVoIPAppRunning = NSWorkspace.shared.runningApplications.contains { app in
+            guard let bundleID = app.bundleIdentifier else { return false }
+            return DispatchQueue.main.sync { VoIPAppsStore.shared.contains(bundleID) }
+        }
+        
+        let shouldBypass = currentlyActive && isVoIPAppRunning
+        
         // We only want to hop to the main thread and publish if the value actually changed.
-        if currentlyActive && !self.isInputActive {
-            log.info("VoIP Monitor: Input active. Suspending.")
+        if shouldBypass && !self.isInputActive {
+            log.info("VoIP Monitor: Input active and VoIP app running. Suspending.")
             DispatchQueue.main.async { self.isInputActive = true }
-        } else if !currentlyActive && self.isInputActive {
-            log.info("VoIP Monitor: Input inactive. Resuming.")
+        } else if !shouldBypass && self.isInputActive {
+            log.info("VoIP Monitor: Input inactive or VoIP app closed. Resuming.")
             DispatchQueue.main.async { self.isInputActive = false }
         }
     }

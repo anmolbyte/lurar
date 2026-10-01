@@ -42,6 +42,15 @@ struct SettingsView: View {
                     maxHeight: .infinity
                 )
 
+            VoIPAppsView(store: VoIPAppsStore.shared, embedded: true)
+                .tabItem { Label("VoIP Apps", systemImage: "phone.bubble") }
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: 460,
+                    idealHeight: 460,
+                    maxHeight: .infinity
+                )
+
             SyncSettingsTab(syncSettings: syncSettings, presetStore: presetStore)
                 .tabItem { Label("Sync", systemImage: "icloud") }
                 .padding(20)
